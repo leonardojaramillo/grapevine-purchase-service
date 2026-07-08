@@ -19,6 +19,7 @@ public class PurchaseController {
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'SOFTWARE_ENGINEER')")
     public PurchaseResponse create(@RequestBody CreatePurchaseRequest request) {
+        System.out.println(">>> Llegó al controller de compras");
         return purchaseService.create(request);
     }
 

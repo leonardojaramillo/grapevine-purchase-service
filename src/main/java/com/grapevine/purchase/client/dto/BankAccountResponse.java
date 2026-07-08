@@ -1,20 +1,22 @@
-package com.grapevine.purchase.bank.dto;
+package com.grapevine.purchase.client.dto;
 
-import com.grapevine.purchase.bank.AccountType;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
-@Getter
+@Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class BankAccountResponse {
-
     private Long id;
     private String accountName;
     private String bank;
     private String accountNumber;
-    private AccountType type;
+    private String type;
     private String currency;
     private BigDecimal balance;
     private Boolean active;

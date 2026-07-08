@@ -1,6 +1,5 @@
 package com.grapevine.purchase.purchase;
 
-import com.grapevine.purchase.bank.BankAccount;
 import com.grapevine.purchase.supplier.Supplier;
 import com.grapevine.purchase.warehouse.Warehouse;
 import jakarta.persistence.*;
@@ -29,9 +28,8 @@ public class Purchase {
     @ManyToOne
     private Supplier supplier;
 
-    @ManyToOne
-    @JoinColumn(name = "bank_account_id")
-    private BankAccount bankAccount;
+    @Column(name = "bank_account_id")
+    private Long bankAccountId;
 
     @ManyToOne
     @JoinColumn(name = "warehouse_id")

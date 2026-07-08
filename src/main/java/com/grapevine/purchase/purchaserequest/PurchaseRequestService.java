@@ -3,7 +3,6 @@ package com.grapevine.purchase.purchaserequest;
 import com.grapevine.purchase.product.ProductRepository;
 import com.grapevine.purchase.purchaserequest.dto.CreatePurchaseRequestDto;
 import com.grapevine.purchase.purchaserequest.dto.PurchaseRequestResponse;
-import com.grapevine.purchase.user.User;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -25,12 +24,12 @@ public class PurchaseRequestService {
     }
 
     public PurchaseRequestResponse create(CreatePurchaseRequestDto dto) {
-        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String requestedByEmail = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
 
         PurchaseRequest request = PurchaseRequest.builder()
                 .product(productRepository.findById(dto.getProductId())
                         .orElseThrow(() -> new RuntimeException("Producto no encontrado")))
-                .requestedBy(user.getFullName())
+                .requestedBy(requestedByEmail)
                 .quantity(dto.getQuantity())
                 .justification(dto.getJustification())
                 .status(PurchaseRequestStatus.PENDING)

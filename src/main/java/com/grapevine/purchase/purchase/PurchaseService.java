@@ -1,8 +1,7 @@
 package com.grapevine.purchase.purchase;
 
-import com.grapevine.purchase.bank.BankAccount;
-import com.grapevine.purchase.bank.BankAccountRepository;
-import com.grapevine.purchase.cash.CashService;
+import com.grapevine.purchase.client.FinanceClient;
+import com.grapevine.purchase.client.dto.BankAccountResponse;
 import com.grapevine.purchase.product.Product;
 import com.grapevine.purchase.product.ProductRepository;
 import com.grapevine.purchase.purchase.dto.*;
@@ -32,17 +31,16 @@ public class PurchaseService {
     private final PurchaseRepository       purchaseRepository;
     private final ProductRepository        productRepository;
     private final SupplierRepository       supplierRepository;
-    private final BankAccountRepository    bankAccountRepository;
     private final WarehouseRepository      warehouseRepository;
     private final WarehouseStockRepository warehouseStockRepository;
-    private final CashService              cashService;
+    private final FinanceClient            financeClient;
 
     public PurchaseResponse create(CreatePurchaseRequest request) {
         Supplier supplier = supplierRepository.findById(request.getSupplierId()).orElseThrow();
 
-        BankAccount bankAccount = null;
         if (request.getBankAccountId() != null) {
-            bankAccount = bankAccountRepository.findById(request.getBankAccountId()).orElseThrow();
+            // Valida que la cuenta exista en finance-service antes de asociarla
+            financeClient.getBankAccount(request.getBankAccountId());
         }
 
         Warehouse warehouse = null;
@@ -52,7 +50,7 @@ public class PurchaseService {
 
         Purchase purchase = new Purchase();
         purchase.setSupplier(supplier);
-        purchase.setBankAccount(bankAccount);
+        purchase.setBankAccountId(request.getBankAccountId());
         purchase.setWarehouse(warehouse);
         purchase.setStatus(PurchaseStatus.DRAFT);
         purchase.setCreatedAt(LocalDateTime.now());
@@ -90,12 +88,7 @@ public class PurchaseService {
         Supplier supplier = supplierRepository.findById(request.getSupplierId()).orElseThrow();
         purchase.setSupplier(supplier);
 
-        if (request.getBankAccountId() != null) {
-            bankAccountRepository.findById(request.getBankAccountId())
-                    .ifPresent(purchase::setBankAccount);
-        } else {
-            purchase.setBankAccount(null);
-        }
+        purchase.setBankAccountId(request.getBankAccountId());
 
         if (request.getWarehouseId() != null) {
             warehouseRepository.findById(request.getWarehouseId())
@@ -165,18 +158,17 @@ public class PurchaseService {
             throw new RuntimeException("Debes adjuntar el comprobante de pago (imagen de transferencia o yape)");
         }
 
-        if (purchase.getBankAccount() != null) {
-            BankAccount account = purchase.getBankAccount();
+        if (purchase.getBankAccountId() != null) {
+            BankAccountResponse account = financeClient.getBankAccount(purchase.getBankAccountId());
             BigDecimal amountToDeduct = convertToAccountCurrency(purchase.getTotal(), account.getCurrency());
-            account.setBalance(account.getBalance().subtract(amountToDeduct));
-            bankAccountRepository.save(account);
+            financeClient.deductBalance(purchase.getBankAccountId(), amountToDeduct);
         }
 
         purchase.setStatus(PurchaseStatus.PAID);
         purchase.setPaymentProofUrl(request.getPaymentProofUrl());
         Purchase saved = purchaseRepository.save(purchase);
 
-        cashService.recordAutomaticExpense(
+        financeClient.recordAutomaticExpense(
                 purchase.getTotal(),
                 "Pago a " + (purchase.getSupplier() != null ? purchase.getSupplier().getName() : "proveedor")
                         + " — Compra #" + saved.getId() + " (no afecta efectivo, pagado por banco)"
@@ -229,11 +221,11 @@ public class PurchaseService {
         };
 
         if (!valid) throw new RuntimeException(
-            "Transición inválida: " + current + " → " + next
+                "Transición inválida: " + current + " → " + next
         );
     }
 
-    private String buildAccountLabel(BankAccount account) {
+    private String buildAccountLabel(BankAccountResponse account) {
         String base = account.getBank() + " - " + account.getAccountNumber();
         return account.getAccountName() != null && !account.getAccountName().isBlank()
                 ? account.getAccountName() + " (" + base + ")"
@@ -241,25 +233,33 @@ public class PurchaseService {
     }
 
     private PurchaseResponse toResponse(Purchase p) {
+        String bankAccountName = "Sin cuenta asignada";
+        if (p.getBankAccountId() != null) {
+            try {
+                BankAccountResponse account = financeClient.getBankAccount(p.getBankAccountId());
+                bankAccountName = buildAccountLabel(account);
+            } catch (Exception e) {
+                bankAccountName = "Cuenta no disponible";
+            }
+        }
+
         return PurchaseResponse.builder()
                 .id(p.getId())
                 .supplierName(p.getSupplier() != null ? p.getSupplier().getName() : "—")
-                .bankAccountName(p.getBankAccount() != null
-                        ? buildAccountLabel(p.getBankAccount())
-                        : "Sin cuenta asignada")
+                .bankAccountName(bankAccountName)
                 .warehouseName(p.getWarehouse() != null ? p.getWarehouse().getName() : "Sin almacén asignado")
                 .status(p.getStatus())
                 .total(p.getTotal())
                 .createdAt(p.getCreatedAt())
                 .paymentProofUrl(p.getPaymentProofUrl())
                 .items(p.getDetails() != null ? p.getDetails().stream()
-                        .map(d -> PurchaseItemResponse.builder()
-                                .productName(d.getProduct().getName())
-                                .quantity(d.getQuantity())
-                                .price(d.getPrice())
-                                .subtotal(d.getSubtotal())
-                                .build())
-                        .toList() : List.of())
+                                                .map(d -> PurchaseItemResponse.builder()
+                                                          .productName(d.getProduct().getName())
+                                                          .quantity(d.getQuantity())
+                                                          .price(d.getPrice())
+                                                          .subtotal(d.getSubtotal())
+                                                          .build())
+                                                .toList() : List.of())
                 .build();
     }
 }

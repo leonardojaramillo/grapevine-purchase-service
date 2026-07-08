@@ -35,6 +35,15 @@ public class JwtService {
                 .signWith(key)
                 .compact();
     }
+    public String extractRole(String token) {
+        return extractAllClaims(token).get("role", String.class);
+    }
+
+    public Long extractUserId(String token) {
+        Object userId = extractAllClaims(token).get("userId");
+        if (userId == null) return null;
+        return Long.valueOf(userId.toString());
+    }
 
     public String extractEmail(String token) {
         return extractAllClaims(token).getSubject();
